@@ -2,6 +2,7 @@ using Gen
 using Distributions
 using LinearAlgebra
 include("structs.jl")
+include("distributions.jl")
 
 @gen function gen_scene_and_observations(
     max_objects::Int64,
@@ -13,35 +14,22 @@ include("structs.jl")
     )
 
     # Generates scene
-    num_objects = @trace(rand(1:max_objects), :num_objects)
-    categories = [rand(1:num_object_categories) for _ in num_objects]
-    locations = [Coordinate(Uniform(room.x_lim...),
-                            Uniform(room.y_lim...),
-                            Uniform(room.z_lim...)) for _ in num_objects]
+    num_objects = @trace(uniform_discrete(1, max_objects), :num_objects)
 
-    objects = [Object(categories[i], locations[i]) for i in 1:num_objects]
-
-    scene = SceneState(num_objects, objects)
-
-    @trace(scene, :scene_state)
+    categories = [@trace(uniform_discrete(1, num_object_categories), :objects=>i=>:category) for i in num_objects]
+    xs = [@trace(uniform(room.x_lim...), :objects=>i=>:x)
+        for i in num_objects]
+    ys = [@trace(uniform(room.y_lim...), :objects=>i=>:y)
+        for i in num_objects]
+    zs = [@trace(uniform(room.z_lim...), :objects=>i=>:z)
+        for i in num_objects]
 
     # Generates observations
-    observations::Vector{Observation}
+    return
+end
 
-    for i in 1:num_observations
-        loc_x = Uniform(room.x_lim...)
-        loc_y = Uniform(room.y_lim...)
-        loc_z = Uniform(room.z_lim...)
-        camera_position = Coordinate(loc_x, loc_y, loc_z)
+args = (5, 10, 20, RoomParams(), CameraParams(), 0.5)
 
-        detected_object = rand(scene.objects)
-        category = detected_object.category
-        d = detected_object.location - camera_position
-        direction = Direction(normalize([d.x, d.y, d.z])...)
+(trace, _) = Gen.generate(gen_scene_and_observations, args)
 
-        observation = Observation(camera_position, category, direction)
-        @trace(observation, (:observation, i))
-        observations.append(observation)
-    end
-
-    return scene, observations
+println(Gen.get_choices(trace))
