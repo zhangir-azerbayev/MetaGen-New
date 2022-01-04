@@ -1,8 +1,7 @@
 Base.@kwdef struct RoomParams
     max_allowed_objects = 8
-    x_lim::Vector{Float64} = [-5, 5]
-    y_lim::Vector{Float64} = [-5, 5]
-    z_lim::Vector{Float64} = [0, 3]
+    bottom_left_lim::Vector{Float64} = [-5, -5, 0]
+    top_right_lim::Vector{Float64} = [5, 5, 3]
 end
 
 Base.@kwdef struct CameraParams
