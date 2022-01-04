@@ -1,4 +1,5 @@
 import LinearAlgebra
+using StatsFuns
 
 ### MvUniform
 struct MvUniform <: Gen.Distribution{Vector{Float64}} end
@@ -41,7 +42,7 @@ struct CategoryAndDirection <: Gen.Distribution{Tuple{Int64, Vector{Float64}}} e
 
 const category_and_direction = CategoryAndDirection()
 
-function Gen.random(::CategoryAndDirection, camera_position::AbstracVector{S}, categories::AbstractVector{T},
+function Gen.random(::CategoryAndDirection, camera_position::AbstractVector{S}, categories::AbstractVector{T},
             locations::Matrix{U}, detection_sd::V) where {S<:Real, T<:Integer,
             U<:Real, V<:Real}
     i = uniform_discrete(1, length(categories))
@@ -57,11 +58,9 @@ end
 function _per_category_logpdf(direction::AbstractVector{T}, camera_position:: AbstractVector{U}, location::AbstractVector{V},
             detection_sd::W) where {T<:Real, U<:Real, V<:Real, W<:Real}
     k = length(direction)
-
     constant = -0.5 * (k-1) * log(2 * pi * detection_sd)
 
-    rest = -0.5 / detection_sd * (LinearAlgebra.norm(mean)^2 - LinearAlgebra.dot(mean, location)/2)
-
+    rest = 0.5 / detection_sd * (LinearAlgebra.dot(location-camera_position, direction)/2 - LinearAlgebra.norm(location-camera_position)^2)
     return constant + rest
 end
 
@@ -73,13 +72,13 @@ function Gen.logpdf(::CategoryAndDirection, x::Tuple{S, AbstractVector{T}},
     obj_idxs = [c for c in categories if c==category]
 
     logpdfs = []
-
     for i in obj_idxs
         this_category = _per_category_logpdf(direction, camera_position, locations[i, :],
             detection_sd)
-        logpdfs.append(this_category)
+        append!(logpdfs, this_category)
     end
-    return sum(logpdfs) / length(categories)
+    println(logpdfs)
+    return StatsFuns.logsumexp(logpdfs) - log(length(categories))
 end
 
 
@@ -96,6 +95,3 @@ has_output_grad(::CategoryAndDirection) = false
 has_argument_grads(::CategoryAndDirection) = false
 
 export category_and_direction
-
-
-print(category_and_direction([0, 0, 0], [1, 2], [1.2 3 4; 7 9 1], 0.05))
