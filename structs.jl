@@ -11,14 +11,6 @@ Base.@kwdef struct CameraParams
     vertical_fov::Float64 = 55
 end
 
-Base.@kwdef struct LineSegment
-    start::Coordinate
-    endpoint::Coordinate
-    a::Float64
-    b::Float64
-    c::Float64
-end
-
 export RoomParams
 export CameraParams
 export LineSegment

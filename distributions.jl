@@ -69,7 +69,7 @@ function Gen.logpdf(::CategoryAndDirection, x::Tuple{S, AbstractVector{T}},
             detection_sd::X) where {S<:Integer, T<:Real, U<:Real, V<:Integer, W<:Real, X<:Real}
     category, direction = x
 
-    obj_idxs = [c for c in categories if c==category]
+    obj_idxs = [i for i in 1:length(categories) if categories[i]==category]
 
     logpdfs = []
     for i in obj_idxs
