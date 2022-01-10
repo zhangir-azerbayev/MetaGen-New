@@ -1,0 +1,52 @@
+\usepackage{babel}   % multi-language support
+\usepackage{float}   % floats
+\usepackage{url}     % urls
+
+\usepackage[l2tabu,orthodox]{nag}  % force newer (and safer) LaTeX commands
+\usepackage[utf8]{inputenc}        % set character set to support some UTF-8
+                                   %   (unicode). Do NOT use this with
+                                   %   XeTeX/LuaTeX!
+\usepackage{sectsty}               % allow redefinition of section command formatting
+\usepackage{tabularx}              % more table options
+\usepackage{titling}               % allow redefinition of title formatting
+\usepackage{imakeidx}              % create and index of words
+\usepackage{xcolor}                % more colour options
+\usepackage{enumitem}              % more list formatting options
+\usepackage{tocloft}               % redefine table of contents, new list like objects
+
+\usepackage{parskip}
+\usepackage{fullpage}
+
+
+\usepackage{amsmath}                                    % extensive math options
+\usepackage{amssymb}                                    % special math symbols
+% \usepackage[Gray,squaren,thinqspace,thinspace]{SIunits} % elegant units
+\usepackage{listings}                                   % source code
+
+\providecommand{\abs}[1]{\left\lvert#1\right\rvert}                    % |.|
+\providecommand{\pr}[1]{\left(#1\right)}                               % (.)
+\providecommand{\br}[1]{\left[#1\right]}                              % [.]
+\providecommand{\cbr}[1]{\left\{#1\right\}}
+
+
+% options for listings
+\lstset{
+  breaklines=true,
+  postbreak=\raisebox{0ex}[0ex][0ex]{\ensuremath{\color{red}\hookrightarrow\space}},
+  numbers=left,
+  numbersep=5pt,
+  numberstyle=\tiny\color{gray},
+  basicstyle=\footnotesize\ttfamily
+}
+
+
+
+% format hyperlinks
+\colorlet{linkcolour}{black}
+\colorlet{urlcolour}{blue}
+% \hypersetup{colorlinks=true,
+%            linkcolor=linkcolour,
+%            citecolor=linkcolour,
+%            urlcolor=urlcolour}
+
+
