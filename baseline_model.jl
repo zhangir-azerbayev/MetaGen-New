@@ -18,20 +18,28 @@ include("distributions.jl")
     println("num_objects: ", num_objects)
     categories = [@trace(uniform_discrete(1, num_object_categories),
         :objects=>i=>:category) for i in 1:num_objects]
-    locations = vcat(transpose.([@trace(mvuniform(room.bottom_left_lim, room.top_right_lim),
-        :objects=>i=>:location) for i in 1:num_objects])...)
+    locations = [@trace(mvuniform(room.bottom_left_lim, room.top_right_lim),
+        :objects=>i=>:location) for i in 1:num_objects]
     # Generates observations
     observations = []
     for i in 1:num_observations
         camera_position = @trace(mvuniform(room.bottom_left_lim, room.top_right_lim),
             :observations=>i=>:camera_location)
 
-        (category, direction) = @trace(category_and_direction(camera_position,
-            categories, locations, detection_sd), :observations=>i=>:category_and_direction)
+        object = @trace(uniform_discrete(1, num_objects), :observations=>i=>:object)
+
+        category_dist = [k == object ? 1 : 0 for k in 1:num_objects]
+
+        category = @trace(categorical(category_dist), :observations=>i=>:category)
+
+        location = locations[object]
+
+        direction = @trace(choose_direction(camera_position, location, detection_sd), :observations=>i=>:direction)
 
         append!(observations, Dict(:camera_location => camera_position,
             :category => category,
-            :direction => direction))
+            :direction => direction,
+            :object => object))
     end
     return num_objects, categories, locations, observations
 end

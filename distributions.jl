@@ -1,5 +1,6 @@
 import LinearAlgebra
 using StatsFuns
+using SpecialFunctions
 
 ### MvUniform
 struct MvUniform <: Gen.Distribution{Vector{Float64}} end
@@ -34,64 +35,43 @@ has_argument_grads(::MvUniform) = (false, false)
 export mvuniform
 
 
+### Direction
+struct ChooseDirection <: Gen.Distribution{Vector{Float64}} end
 
+const choose_direction = ChooseDirection()
 
-### CategoryAndDirection
-
-struct CategoryAndDirection <: Gen.Distribution{Tuple{Int64, Vector{Float64}}} end
-
-const category_and_direction = CategoryAndDirection()
-
-function Gen.random(::CategoryAndDirection, camera_position::AbstractVector{S}, categories::AbstractVector{T},
-            locations::Matrix{U}, detection_sd::V) where {S<:Real, T<:Integer,
+function Gen.random(::ChooseDirection, camera_position::AbstractVector{T},
+            location::AbstractVector{U}, detection_sd::V) where {T<:Real,
             U<:Real, V<:Real}
-    i = uniform_discrete(1, length(categories))
-
-    location = locations[i, :]
     detection_location = mvnormal(location, LinearAlgebra.Diagonal([detection_sd for _ in 1:length(location)]))
 
     direction = (detection_location-camera_position)/LinearAlgebra.norm(detection_location-camera_position)
 
-    return categories[i], direction
+    return direction
 end
 
-function _per_category_logpdf(direction::AbstractVector{T}, camera_position:: AbstractVector{U}, location::AbstractVector{V},
-            detection_sd::W) where {T<:Real, U<:Real, V<:Real, W<:Real}
-    k = length(direction)
+function Gen.logpdf(::ChooseDirection, x::AbstractVector{T}, camera_position::AbstractVector{U},
+            location::AbstractVector{V}, detection_sd::W) where {T<:Real,
+            U<:Real, V<:Real, W<:Real}
+    k = length(x)
     constant = -0.5 * (k-1) * log(2 * pi * detection_sd)
 
-    rest = 0.5 / detection_sd * (LinearAlgebra.dot(location-camera_position, direction)/2 - LinearAlgebra.norm(location-camera_position)^2)
-    return constant + rest
+    term_1 = 0.5 / detection_sd * (LinearAlgebra.dot(location-camera_position, x)/2 - LinearAlgebra.norm(location-camera_position)^2)
+
+    term_2 = log(SpecialFunctions.erfc(-LinearAlgebra.dot(location - camera_position, x) / (2 * sqrt(2*detection_sd))))
+
+    return constant + term_1 + term_2
 end
 
-function Gen.logpdf(::CategoryAndDirection, x::Tuple{S, AbstractVector{T}},
-            camera_position::AbstractVector{U}, categories::AbstractVector{V}, locations::Matrix{W},
-            detection_sd::X) where {S<:Integer, T<:Real, U<:Real, V<:Integer, W<:Real, X<:Real}
-    category, direction = x
-
-    obj_idxs = [i for i in 1:length(categories) if categories[i]==category]
-
-    logpdfs = []
-    for i in obj_idxs
-        this_category = _per_category_logpdf(direction, camera_position, locations[i, :],
-            detection_sd)
-        append!(logpdfs, this_category)
-    end
-    println(logpdfs)
-    return StatsFuns.logsumexp(logpdfs) - log(length(categories))
-end
-
-
-function Gen.logpdf_grad(::CategoryAndDirection, x::Tuple{S, AbstractVector{T}},
-            camera_position::AbstractVector{U}, categories::AbstractVector{V}, locations::Matrix{W},
-            detection_sd::X) where {S<:Integer, T<:Real, U<:Real, V<:Integer, W<:Real, X<:Real}
+function Gen.logpdf_grad(::ChooseDirection, x::AbstractVector{T}, camera_position::AbstractVector{U},
+            location::AbstractVector{V}, detection_sd::W) where {T<:Real,
+            U<:Real, V<:Real, W<:Real}
     return (nothing, nothing, nothing, nothing)
 end
 
+(::ChooseDirection)(position, location, sd) = Gen.random(ChooseDirection(), position, location, sd)
 
-(::CategoryAndDirection)(position, categories, locations, sd) = Gen.random(CategoryAndDirection(), position, categories, locations, sd)
+has_output_grad(::ChooseDirection) = false
+has_argument_grads(::ChooseDirection) = false
 
-has_output_grad(::CategoryAndDirection) = false
-has_argument_grads(::CategoryAndDirection) = false
-
-export category_and_direction
+export choose_direction
