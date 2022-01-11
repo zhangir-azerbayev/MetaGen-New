@@ -10,9 +10,7 @@ include("distributions.jl")
     num_observations::Int64,
     room::RoomParams,
     camera::CameraParams,
-    detection_sd::Float64,
-    baseline::Bool=false,
-    confusion_matrix=nothing,
+    detection_sd::Float64
     )
 
     # Generates scene
@@ -30,11 +28,7 @@ include("distributions.jl")
 
         object = @trace(uniform_discrete(1, num_objects), :observations=>i=>:object)
 
-        if baseline
-            category_dist = [k == object ? 1 : 0 for k in 1:num_objects]
-        else
-            category_dist = confusion_matrix[k, :]
-        end
+        category_dist = [k == object ? 1 : 0 for k in 1:num_objects]
 
         category = @trace(categorical(category_dist), :observations=>i=>:category)
 

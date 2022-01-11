@@ -1,6 +1,7 @@
 import LinearAlgebra
 using StatsFuns
 using SpecialFunctions
+using OffsetArrays
 
 ### MvUniform
 struct MvUniform <: Gen.Distribution{Vector{Float64}} end
@@ -75,3 +76,34 @@ has_output_grad(::ChooseDirection) = false
 has_argument_grads(::ChooseDirection) = false
 
 export choose_direction
+
+
+###ZeroCategorical
+struct ZeroCategorical <: Gen.Distribution{Int} end
+
+"""
+    zero_categorical(probs::AbstractArray{U, 1}) where {U <: Real}
+Given a vector of probabilities `probs` where `sum(probs) = 1`, sample an `Int` `i` from the set {0, 1, .., `length(probs)-1`} with probability `probs[i]`.
+"""
+const zero_categorical = ZeroCategorical()
+
+function Gen.logpdf(::ZeroCategorical, x::Int, probs::AbstractArray{U,1}) where {U <: Real}
+    (x >= 0 && x < length(probs)) ? log(probs[x]) : -Inf
+end
+
+function Gen.logpdf_grad(::ZeroCategorical, x::Int, probs::AbstractArray{U,1})  where {U <: Real}
+    (nothing, nothing)
+end
+
+function Gen.random(::ZeroCategorical, probs::AbstractArray{U,1}) where {U <: Real}
+    one_indexed_probs = OffsetArray(probs, 1:length(probs))
+    rand(Distributions.Categorical(one_indexed_probs))-1
+end
+is_discrete(::ZeroCategorical) = true
+
+(::ZeroCategorical)(probs) = random(ZeroCategorical(), probs)
+
+has_output_grad(::ZeroCategorical) = false
+has_argument_grads(::ZeroCategorical) = false
+
+export zero_categorical
