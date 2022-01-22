@@ -61,19 +61,21 @@ def sample_baseline(num_objects,
 
 
 def test_baseline(): 
-    K = 2
-    gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, 2, 500, 0.1)
+    K = 5
+    sigma = 0.1
+    num_categories = 2
+    gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, num_categories, 500, sigma)
     print(gt_object_categories)
 
 
     num_em_steps = 10
     num_gd_steps = 5000
 
-    init_displacement = np.array([[0.0, 0, 0], [-.5, .4, .2], [-.3, -.5, .2]])
-        #[1, -1, 1], [2, 3, -1], [2, 3, -2]])
+    init_displacement = np.array([[0.0, 0, 0], [-.5, .4, .2], [-.3, -.5, .2],
+        [1, -1, 1], [2, 3, -1], [2, 3, -2]])
 
     object_locations = gt_object_locations + init_displacement
-    object_categories = np.array([0, 1, 2])
+    object_categories = np.array([0, 1, 1, 2, 2, 2])
 
     v_matrix = np.array([[0, .5, .5], [0, 1, 0], [0, 0, 1]])
 
@@ -81,10 +83,11 @@ def test_baseline():
         object_locations, object_categories = em_step(camera_locations, 
                                                       directions, 
                                                       obs_categories, 
-                                                      .1, 
+                                                      sigma, 
                                                       v_matrix, 
                                                       object_locations, 
                                                       object_categories, 
+                                                      num_categories, 
                                                       num_gd_steps=num_gd_steps
                                                       )
 

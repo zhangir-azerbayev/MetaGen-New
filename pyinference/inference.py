@@ -190,7 +190,8 @@ def em_step(camera_locations,
             v_matrix, 
             object_locations, 
             object_categories, 
-            num_gd_steps=100): 
+            num_categories, 
+            num_gd_steps=100):
 
     K = np.shape(object_locations)[0]-1
     print("K: ", K)
@@ -221,7 +222,7 @@ def em_step(camera_locations,
                                                  save_losses=True 
                                                  )  
         #M-step categories 
-        categories = np.arange(1, K+1)
+        categories = np.arange(1, num_categories+1)
 
         in_axes = (None, None, None, None, None, None, None, 0)
         per_category_nll = vmap(compute_component_nll, in_axes=in_axes)(resps[:, k], 
