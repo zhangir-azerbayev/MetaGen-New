@@ -94,7 +94,8 @@ def m_step_loss(resps,
     nll_vec = vmap(location_nll, in_axes=(0,0,None,None))(camera_locations, 
                                                                directions, 
                                                                sigma, 
-                                                               object_location)
+                                                               object_location).flatten()
+    
     losses_vec = resps * nll_vec
 
     return  1/normalizer * np.sum(losses_vec)
@@ -175,8 +176,7 @@ def compute_component_nll(resps,
                                                 sigma, 
                                                 v_matrix, 
                                                 object_location, 
-                                                object_category)
-
+                                                object_category).flatten()
 
 
 
@@ -220,12 +220,11 @@ def em_step(camera_locations,
                                                  num_gd_steps, 
                                                  save_losses=True 
                                                  )  
-        print(losses)
         #M-step categories 
         categories = np.arange(1, K+1)
 
         in_axes = (None, None, None, None, None, None, None, 0)
-        per_category_nll = vmap(compute_component_nll, in_axes=in_axes)(resps, 
+        per_category_nll = vmap(compute_component_nll, in_axes=in_axes)(resps[:, k], 
                                         camera_locations, 
                                         directions, 
                                         obs_categories, 

@@ -75,7 +75,7 @@ def test_baseline():
     object_locations = gt_object_locations + init_displacement
     object_categories = np.array([0, 1, 2])
 
-    v_matrix = np.array([[0, .5, .5], [0, .9, 1], [0, .1, .9]])
+    v_matrix = np.array([[0, .5, .5], [0, 1, 0], [0, 0, 1]])
 
     for _ in range(num_em_steps): 
         object_locations, object_categories = em_step(camera_locations, 
