@@ -60,40 +60,40 @@ def sample_baseline(num_objects,
     return object_locations, object_categories, camera_locations, directions, obs_categories, obs_objects
 
 
-gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(1, 1, 10, 0.1)
+def test_baseline(): 
+    K = 2
+    gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, 2, 500, 0.1)
+    print(gt_object_categories)
 
 
-num_em_steps = 5
-num_gd_steps = 10000
+    num_em_steps = 10
+    num_gd_steps = 5000
 
-init_displacement = np.array([[0.0, 0, 0], [-4, 2.7, 4.8]])
+    init_displacement = np.array([[0.0, 0, 0], [-.5, .4, .2], [-.3, -.5, .2]])
+        #[1, -1, 1], [2, 3, -1], [2, 3, -2]])
 
-object_locations = gt_object_locations + init_displacement
-object_categories = np.array([0, 1])
+    object_locations = gt_object_locations + init_displacement
+    object_categories = np.array([0, 1, 2])
 
+    v_matrix = np.array([[0, .5, .5], [0, .9, 1], [0, .1, .9]])
 
-for _ in range(num_em_steps): 
-    # E step 
-    resps = compute_resps(camera_locations, directions, obs_categories, 0.1, 
-            object_locations, object_categories)
-    print(resps)
-
-    # M step 
-    optimized, losses, _ = optimize_location(resps[:, 1],
-                                                  camera_locations, 
-                                                  directions, 
-                                                  0.1,
-                                                  object_locations[1], 
-                                                  num_gd_steps, 
-                                                  save_losses=True)
-    object_locations = np.stack([np.array([0.0, 0, 0]), optimized])
-
-    plt.plot(losses)
-    plt.show()
-    plt.close()
+    for _ in range(num_em_steps): 
+        object_locations, object_categories = em_step(camera_locations, 
+                                                      directions, 
+                                                      obs_categories, 
+                                                      .1, 
+                                                      v_matrix, 
+                                                      object_locations, 
+                                                      object_categories, 
+                                                      num_gd_steps=num_gd_steps
+                                                      )
 
 
-print("ground truth: \n", gt_object_locations)
-print("inference: \n", object_locations)
+
+    print("ground truth: \n", gt_object_locations)
+    print(gt_object_categories)
+    print("inference: \n", object_locations)
+    print(object_categories)
 
 
+test_baseline()

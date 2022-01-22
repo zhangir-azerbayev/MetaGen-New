@@ -1,9 +1,10 @@
 import jax.numpy as np 
 from jax.scipy.special import erfc as erfc
-from jax import grad, jit, vmap
+from jax import grad, jit, vmap 
 import math 
 from functools import partial
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 eps = 1e-10
 
@@ -12,9 +13,10 @@ def likelihood(camera_location,
                direction, 
                obs_category,
                sigma, 
+               v_matrix,
                object_location, 
                object_category): 
-    is_same_category = np.heaviside(-np.abs(object_category-obs_category).astype(int), 1)
+    v_matrix_weight = v_matrix[object_category, obs_category]
 
     mean = object_location - camera_location 
     product_term = np.dot(direction, mean)
@@ -22,20 +24,23 @@ def likelihood(camera_location,
     exp_factor = np.exp(-(np.dot(mean, mean) - np.square(product_term))/(2*sigma))
     erf_factor = erfc(-product_term/np.sqrt(2*sigma))
 
-    lhood = is_same_category * exp_factor * erf_factor
+    lhood = v_matrix_weight * exp_factor * erf_factor
     return lhood
+
 
 def compute_row_responsibilities(camera_location, 
                                  direction, 
                                  obs_category,
                                  sigma, 
+                                 v_matrix, 
                                  object_locations, 
                                  object_categories): 
-    in_axes = (None, None, None, None, 0, 0)
+    in_axes = (None, None, None, None, None, 0, 0)
     likelihood_vec = vmap(likelihood, in_axes=in_axes)(camera_location, 
                                   direction,
                                   obs_category,
                                   sigma,
+                                  v_matrix,
                                   object_locations, 
                                   object_categories
                                   )
@@ -48,21 +53,23 @@ def compute_resps(camera_locations,
                              directions, 
                              obs_categories,
                              sigma, 
+                             v_matrix, 
                              object_locations, 
                              object_categories): 
-    in_axes = (0, 0, 0, None, None, None)
+    in_axes = (0, 0, 0, None, None, None, None)
     
     return vmap(compute_row_responsibilities, in_axes=in_axes)(camera_locations, 
                                                               directions, 
                                                               obs_categories,
                                                               sigma, 
+                                                              v_matrix, 
                                                               object_locations, 
                                                               object_categories)
 
 
 
-def per_element_m_step_loss(responsibility, 
-                 camera_location, 
+
+def location_nll(camera_location, 
                  direction, 
                  sigma, 
                  object_location): 
@@ -75,20 +82,20 @@ def per_element_m_step_loss(responsibility,
 
     unweighted_loss = np.dot(mean, mean) - np.square(product_term) + erf_term
 
-    return responsibility * unweighted_loss
+    return unweighted_loss
 
 
-def m_step_loss(responsibilities, 
+def m_step_loss(resps, 
                 camera_locations, 
                 directions, 
                 sigma, 
                 object_location):
-    normalizer = np.sum(responsibilities)
-    losses_vec = vmap(per_element_m_step_loss, in_axes=(0,0,0,None,None))(responsibilities, 
-                                                               camera_locations, 
+    normalizer = np.sum(resps)
+    nll_vec = vmap(location_nll, in_axes=(0,0,None,None))(camera_locations, 
                                                                directions, 
                                                                sigma, 
                                                                object_location)
+    losses_vec = resps * nll_vec
 
     return  1/normalizer * np.sum(losses_vec)
 
@@ -124,7 +131,6 @@ def optimize_location(responsibilities,
         size = np.linalg.norm(location_grad) 
         if np.linalg.norm(location_grad) > clipping_threshold: 
             object_grad = clipping_threshold * location_grad/size
-            print(i, "clipped")
         
         object_location = object_location - lr * location_grad
 
@@ -132,3 +138,120 @@ def optimize_location(responsibilities,
             locations.append(object_location)
 
     return object_location, losses, locations
+
+
+"""correct up to additive constant"""
+def nll(camera_location, 
+                  direction, 
+                  obs_category, 
+                  sigma, 
+                  v_matrix, 
+                  object_location, 
+                  object_category): 
+
+    v_matrix_weight = v_matrix[object_category, obs_category]
+
+    location_only = location_nll(camera_location,
+                                direction, 
+                                sigma, 
+                                object_location)
+    
+    nl_lhood = -np.log(v_matrix_weight+eps) + location_only
+    return nl_lhood
+
+def compute_component_nll(resps, 
+                                    camera_locations, 
+                                    directions, 
+                                    obs_categories, 
+                                    sigma, 
+                                    v_matrix, 
+                                    object_location, 
+                                    object_category): 
+    normalizer = np.sum(resps)
+    in_axes = (0, 0, 0, None, None, None, None)
+    nll_vec = vmap(nll, in_axes=in_axes)(camera_locations, 
+                                                directions, 
+                                                obs_categories, 
+                                                sigma, 
+                                                v_matrix, 
+                                                object_location, 
+                                                object_category)
+
+
+
+
+    return 1/normalizer * np.sum(resps * nll_vec)
+
+
+def em_step(camera_locations, 
+            directions, 
+            obs_categories, 
+            sigma, 
+            v_matrix, 
+            object_locations, 
+            object_categories, 
+            num_gd_steps=100): 
+
+    K = np.shape(object_locations)[0]-1
+    print("K: ", K)
+    
+    # E-step
+    resps = compute_resps(camera_locations, 
+                          directions, 
+                          obs_categories, 
+                          sigma, 
+                          v_matrix, 
+                          object_locations, 
+                          object_categories
+                          )
+
+    print(resps)
+    
+    # M-step locations 
+    new_object_locations = [np.array([0.0, 0, 0])] + [None for _ in range(1,K+1)]
+    new_object_categories = [0] + [None for _ in range(1, K+1)]
+    for k in range(1, K+1): 
+        #M-step locations
+        new_object_locations[k], losses, _ = optimize_location(resps[:, k], 
+                                                 camera_locations, 
+                                                 directions, 
+                                                 sigma, 
+                                                 object_locations[k], 
+                                                 num_gd_steps, 
+                                                 save_losses=True 
+                                                 )  
+        print(losses)
+        #M-step categories 
+        categories = np.arange(1, K+1)
+
+        in_axes = (None, None, None, None, None, None, None, 0)
+        per_category_nll = vmap(compute_component_nll, in_axes=in_axes)(resps, 
+                                        camera_locations, 
+                                        directions, 
+                                        obs_categories, 
+                                        sigma, 
+                                        v_matrix, 
+                                        new_object_locations[k], 
+                                        categories)
+    
+        print("per category nll: ", per_category_nll)
+        best_cat = np.argmin(per_category_nll) + 1
+        print("best cat: ", best_cat)
+        new_object_categories[k] = best_cat 
+
+    new_object_locations = np.stack(new_object_locations)
+    new_object_categories = np.stack(new_object_categories)
+
+    return new_object_locations, new_object_categories
+                   
+
+
+
+
+        
+
+
+    
+
+
+    
