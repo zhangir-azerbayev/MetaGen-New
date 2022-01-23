@@ -269,7 +269,8 @@ def em_step(camera_locations,
                           )
 
     print(resps)
-    
+
+    """ 
     # M-step locations 
     new_locations = [np.array([0.0, 0, 0])] + [None for _ in range(1,K+1)]
     new_categories = [0] + [None for _ in range(1, K+1)]
@@ -289,7 +290,26 @@ def em_step(camera_locations,
                                                  lr
                                                  )  
 
-
+    
     new_locations = np.stack(new_locations)
     new_categories = np.stack(new_categories)
+    """
+    in_axes = (1, None, None, None, None, None, 0, None, None, None)
+    inferred_locations, inferred_categories = vmap(optimize_location_and_category, 
+            in_axes=in_axes)(resps[:, 1:], 
+                             camera_locations, 
+                             directions, 
+                             obs_categories, 
+                             sigma,
+                             v_matrix,
+                             object_locations[1:], 
+                             num_categories, 
+                             num_gd_steps, 
+                             lr
+                            )
+    new_locations = np.concatenate((np.array([[0.0, 0, 0]]), inferred_locations), 
+            axis=0)
+    new_categories = np.concatenate((np.array([0]), inferred_categories))
+    print("new locations:\n", new_locations) 
+    print("new categories:\n", new_categories)
     return new_locations, new_categories 
