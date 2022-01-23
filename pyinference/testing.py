@@ -5,6 +5,10 @@ from scipy.stats import multivariate_normal
 from pyinference.inference import *
 import numpy 
 import matplotlib.pyplot as plt
+import os 
+
+
+os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 
 random.seed(11)
 numpy.random.seed(11)
@@ -69,7 +73,7 @@ def test_baseline():
 
 
     num_em_steps = 5
-    num_gd_steps = 3000
+    num_gd_steps = 5000
 
     init_displacement = np.array([[0.0, 0, 0], [-1, 1, 2], [-3, -.5, .2],
         [.1, -1, .1]]) # [2, .3, -1], [2, .3, -.2]])

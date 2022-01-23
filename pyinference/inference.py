@@ -1,6 +1,6 @@
 import jax.numpy as np 
 from jax.scipy.special import erfc as erfc
-from jax import grad, jit, vmap 
+from jax import grad, jit, vmap, pmap
 import math 
 from functools import partial
 from tqdm import tqdm
@@ -154,9 +154,8 @@ def optimize_location(resps,
                       init_location, 
                       object_category,
                       num_steps,
-                      lr=1e-3, 
-                      clip_threshold=1,
-                      print_losses = True, 
+                      lr, 
+                      print_losses = False, 
                       ):
     loss_fn = lambda loc: compute_component_nll(resps, 
                                                 camera_locations, 
@@ -173,7 +172,7 @@ def optimize_location(resps,
     losses = []
     
     object_location = init_location
-    for i in tqdm(range(num_steps)): 
+    for i in range(num_steps): 
         loss = loss_fn(object_location)
         
         if print_losses: 
@@ -181,11 +180,13 @@ def optimize_location(resps,
 
         location_grad = grad_loss(object_location)
         
-        #size = np.linalg.norm(location_grad) 
-        #if np.linalg.norm(location_grad) > clip_threshold: 
-            #object_grad = clip_threshold * location_grad/size
         
         object_location = object_location - lr * location_grad
+
+    if print_losses:
+        plt.plot(losses)
+        plt.show()
+        plt.close()
 
     
     return object_location, loss
@@ -202,9 +203,10 @@ def optimize_location_and_category(resps,
                       lr=1e-3, 
                       clip_threshold=1,
                       ):
+    """
     locations = [None for _ in range(num_categories)]
     nlls = [None for _ in range(num_categories)]
-        
+    
     for c in range(1, num_categories+1): 
         locations[c-1], nlls[c-1] = optimize_location(resps, 
                                                       camera_locations, 
@@ -219,12 +221,28 @@ def optimize_location_and_category(resps,
                                                       clip_threshold=clip_threshold)
     
     nlls = np.array(nlls)
+    """
+    print("doing component with all categories")
+    categories = np.arange(1, num_categories+1)
+    in_axes = (None, None, None, None, None, None, None, 0, None, None)
+    locations, nlls = vmap(optimize_location, in_axes=in_axes)(resps, 
+                                                               camera_locations, 
+                                                               directions, 
+                                                               obs_categories, 
+                                                               sigma, 
+                                                               v_matrix, 
+                                                               init_location, 
+                                                               categories, 
+                                                               num_steps, 
+                                                               lr)
+
     print("nlls: ", nlls)
+    print("locations: ", locations)
     best_cat = np.argmin(nlls) + 1
     print("best category: ", best_cat)
-    location = locations[best_cat-1]
+    best_location = locations[best_cat-1]
 
-    return location, best_cat
+    return best_location, best_cat
 
 def em_step(camera_locations, 
             directions, 
@@ -234,7 +252,8 @@ def em_step(camera_locations,
             object_locations, 
             object_categories, 
             num_categories, 
-            num_gd_steps=100):
+            num_gd_steps=100, 
+            lr=1e-3):
 
     K = np.shape(object_locations)[0]-1
     print("K: ", K)
@@ -254,6 +273,7 @@ def em_step(camera_locations,
     # M-step locations 
     new_locations = [np.array([0.0, 0, 0])] + [None for _ in range(1,K+1)]
     new_categories = [0] + [None for _ in range(1, K+1)]
+    
     for k in range(1, K+1): 
         #M-step locations
         print("running m step")
@@ -265,22 +285,11 @@ def em_step(camera_locations,
                                                  v_matrix,
                                                  object_locations[k], 
                                                  num_categories, 
-                                                 num_gd_steps
+                                                 num_gd_steps, 
+                                                 lr
                                                  )  
+
 
     new_locations = np.stack(new_locations)
     new_categories = np.stack(new_categories)
-
-    return new_locations, new_categories
-                   
-
-
-
-
-        
-
-
-    
-
-
-    
+    return new_locations, new_categories 
