@@ -7,6 +7,11 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 eps = 1e-10
+def heaviside(x): 
+    return np.heaviside(x, 0)
+
+def alt_heaviside(x): 
+    return 1-np.heaviside(x, 0)
 
 """Correct up to a multiplicative constant"""
 def likelihood(camera_location, 
@@ -16,6 +21,7 @@ def likelihood(camera_location,
                v_matrix,
                object_location, 
                object_category): 
+    const = 1/(4*np.pi*sigma)
     v_matrix_weight = v_matrix[object_category, obs_category]
 
     mean = object_location - camera_location 
@@ -24,8 +30,10 @@ def likelihood(camera_location,
     exp_factor = np.exp(-(np.dot(mean, mean) - np.square(product_term))/(2*sigma))
     erf_factor = erfc(-product_term/np.sqrt(2*sigma))
 
-    lhood = v_matrix_weight * exp_factor * erf_factor
-    return lhood
+    cat_zero_lhood = alt_heaviside(object_category) * v_matrix_weight/600 
+    
+    cat_nonzero_lhood = heaviside(object_category) * const * v_matrix_weight * exp_factor * erf_factor
+    return cat_nonzero_lhood + cat_zero_lhood
 
 
 def compute_row_responsibilities(camera_location, 
@@ -73,14 +81,16 @@ def location_nll(camera_location,
                  direction, 
                  sigma, 
                  object_location): 
+    const = np.log(4*np.pi*sigma)
+
     mean = object_location - camera_location 
 
     product_term = np.dot(direction, mean)
 
     inside_log = erfc(-product_term / np.sqrt(2*sigma)) + eps
-    erf_term = -2 * sigma * np.log(inside_log)
+    erf_term = -np.log(inside_log)
 
-    unweighted_loss = np.dot(mean, mean) - np.square(product_term) + erf_term
+    unweighted_loss = const + (np.dot(mean, mean) - np.square(product_term))/(2*sigma) + erf_term
 
     return unweighted_loss
 
@@ -119,12 +129,13 @@ def nll(camera_location,
                                 direction, 
                                 sigma, 
                                 object_location)
-    
-    nl_lhood = -np.log(v_matrix_weight+eps) + location_only
-    return nl_lhood
 
-def compute_component_nll(resps, 
-                                    camera_locations, 
+    cat_zero_nll = alt_heaviside(object_category) * (-np.log(v_matrix_weight+eps) + np.log(600))
+    
+    cat_nonzero_nll = heaviside(object_category) * (-np.log(v_matrix_weight+eps) + location_only)
+    return cat_zero_nll + cat_nonzero_nll
+
+def compute_component_nll(resps, camera_locations, 
                                     directions, 
                                     obs_categories, 
                                     sigma, 
@@ -237,7 +248,6 @@ def optimize_location_and_category(resps,
                                                                lr)
 
     print("nlls: ", nlls)
-    print("locations: ", locations)
     best_cat = np.argmin(nlls) + 1
     print("best category: ", best_cat)
     best_location = locations[best_cat-1]
