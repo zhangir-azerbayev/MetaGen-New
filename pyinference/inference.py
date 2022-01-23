@@ -101,44 +101,7 @@ def m_step_loss(resps,
     return  1/normalizer * np.sum(losses_vec)
 
 
-def optimize_location(responsibilities, 
-                      camera_locations, 
-                      directions, 
-                      sigma, 
-                      init_location, 
-                      num_steps,
-                      lr=1e-3, 
-                      clipping_threshold=1,
-                      save_losses = False, 
-                      save_locations = False 
-                      ):
-    loss_fn = partial(m_step_loss, responsibilities, camera_locations, directions, 
-            sigma)
 
-    grad_loss = jit(grad(loss_fn))
-
-    losses = []
-    locations = []
-    
-    object_location = init_location
-    for i in tqdm(range(num_steps)): 
-        loss = loss_fn(object_location)
-        
-        if save_losses: 
-            losses.append(loss)
-
-        location_grad = grad_loss(object_location)
-        
-        size = np.linalg.norm(location_grad) 
-        if np.linalg.norm(location_grad) > clipping_threshold: 
-            object_grad = clipping_threshold * location_grad/size
-        
-        object_location = object_location - lr * location_grad
-
-        if save_locations:
-            locations.append(object_location)
-
-    return object_location, losses, locations
 
 
 """correct up to additive constant"""
@@ -182,6 +145,86 @@ def compute_component_nll(resps,
 
     return 1/normalizer * np.sum(resps * nll_vec)
 
+def optimize_location(resps, 
+                      camera_locations, 
+                      directions, 
+                      obs_categories, 
+                      sigma, 
+                      v_matrix,
+                      init_location, 
+                      object_category,
+                      num_steps,
+                      lr=1e-3, 
+                      clip_threshold=1,
+                      print_losses = True, 
+                      ):
+    loss_fn = lambda loc: compute_component_nll(resps, 
+                                                camera_locations, 
+                                                directions, 
+                                                obs_categories, 
+                                                sigma, 
+                                                v_matrix,
+                                                loc, 
+                                                object_category
+                                                )
+
+    grad_loss = jit(grad(loss_fn))
+
+    losses = []
+    
+    object_location = init_location
+    for i in tqdm(range(num_steps)): 
+        loss = loss_fn(object_location)
+        
+        if print_losses: 
+            losses.append(loss)
+
+        location_grad = grad_loss(object_location)
+        
+        #size = np.linalg.norm(location_grad) 
+        #if np.linalg.norm(location_grad) > clip_threshold: 
+            #object_grad = clip_threshold * location_grad/size
+        
+        object_location = object_location - lr * location_grad
+
+    
+    return object_location, loss
+
+def optimize_location_and_category(resps, 
+                      camera_locations, 
+                      directions, 
+                      obs_categories,
+                      sigma, 
+                      v_matrix,
+                      init_location, 
+                      num_categories, 
+                      num_steps,
+                      lr=1e-3, 
+                      clip_threshold=1,
+                      ):
+    locations = [None for _ in range(num_categories)]
+    nlls = [None for _ in range(num_categories)]
+        
+    for c in range(1, num_categories+1): 
+        locations[c-1], nlls[c-1] = optimize_location(resps, 
+                                                      camera_locations, 
+                                                      directions, 
+                                                      obs_categories, 
+                                                      sigma, 
+                                                      v_matrix, 
+                                                      init_location, 
+                                                      c, 
+                                                      num_steps, 
+                                                      lr=lr, 
+                                                      clip_threshold=clip_threshold)
+    
+    nlls = np.array(nlls)
+    print("nlls: ", nlls)
+    best_cat = np.argmin(nlls) + 1
+    print("best category: ", best_cat)
+    location = locations[best_cat-1]
+
+    return location, best_cat
 
 def em_step(camera_locations, 
             directions, 
@@ -209,40 +252,26 @@ def em_step(camera_locations,
     print(resps)
     
     # M-step locations 
-    new_object_locations = [np.array([0.0, 0, 0])] + [None for _ in range(1,K+1)]
-    new_object_categories = [0] + [None for _ in range(1, K+1)]
+    new_locations = [np.array([0.0, 0, 0])] + [None for _ in range(1,K+1)]
+    new_categories = [0] + [None for _ in range(1, K+1)]
     for k in range(1, K+1): 
         #M-step locations
-        new_object_locations[k], losses, _ = optimize_location(resps[:, k], 
+        print("running m step")
+        new_locations[k], new_categories[k]= optimize_location_and_category(resps[:, k], 
                                                  camera_locations, 
                                                  directions, 
-                                                 sigma, 
+                                                 obs_categories, 
+                                                 sigma,
+                                                 v_matrix,
                                                  object_locations[k], 
-                                                 num_gd_steps, 
-                                                 save_losses=True 
+                                                 num_categories, 
+                                                 num_gd_steps
                                                  )  
-        #M-step categories 
-        categories = np.arange(1, num_categories+1)
 
-        in_axes = (None, None, None, None, None, None, None, 0)
-        per_category_nll = vmap(compute_component_nll, in_axes=in_axes)(resps[:, k], 
-                                        camera_locations, 
-                                        directions, 
-                                        obs_categories, 
-                                        sigma, 
-                                        v_matrix, 
-                                        new_object_locations[k], 
-                                        categories)
-    
-        print("per category nll: ", per_category_nll)
-        best_cat = np.argmin(per_category_nll) + 1
-        print("best cat: ", best_cat)
-        new_object_categories[k] = best_cat 
+    new_locations = np.stack(new_locations)
+    new_categories = np.stack(new_categories)
 
-    new_object_locations = np.stack(new_object_locations)
-    new_object_categories = np.stack(new_object_categories)
-
-    return new_object_locations, new_object_categories
+    return new_locations, new_categories
                    
 
 
