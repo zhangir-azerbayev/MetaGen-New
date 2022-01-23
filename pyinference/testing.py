@@ -6,12 +6,14 @@ from pyinference.inference import *
 import numpy 
 import matplotlib.pyplot as plt
 import os 
+import jax.random as jrandom
 
 
 os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 
-random.seed(12)
-numpy.random.seed(12)
+random.seed(13)
+numpy.random.seed(13)
+key = jrandom.PRNGKey(13)
 
 def sample_baseline(num_objects, 
                     num_categories, 
@@ -65,22 +67,22 @@ def sample_baseline(num_objects,
 
 
 def test_baseline(): 
-    K = 5
+    K = 2
     sigma = 0.1
     num_categories = 2
-    gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(3, num_categories, 500, sigma)
+    gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, num_categories, 500, sigma)
     print(gt_object_categories)
 
 
     num_em_steps = 5
     num_gd_steps = 3000
 
-    init_displacement = np.array([[0.0, 0, 0], [-1, 1, 2], [-3, -.5, .2],
-        [.1, -1, .1], [2, .3, -1], [2, .3, -.2]])
+    init_displacement = np.array([[0.0, 0, 0], [-1, 1, 2], [-3, -.5, .2]])
+        #[.1, -1, .1], [2, .3, -1], [2, .3, -.2]])
 
     #object_locations = gt_object_locations + init_displacement
     object_locations = init_displacement
-    object_categories = np.array([0, 1, 1, 1, 1, 1])
+    object_categories = np.array([0, 1, 1])
     print(object_categories)
 
     #v_matrix = np.array([[0, .2, .2, .2, .2, .2], [0, 1, 0, 0, 0, 0], 
@@ -110,4 +112,35 @@ def test_baseline():
     print(object_categories)
 
 
-test_baseline()
+K = 3
+sigma = 0.1
+num_categories = 5
+gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, num_categories, 500, sigma)
+
+v_matrix = np.array([[0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0], 
+        [0, 0, 1, 0, 0, 0], [0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 1, 0], 
+        [0, 0, 0, 0, 0, 1]])
+
+
+object_locations, object_categories, resps, nll = do_em_inference(camera_locations, 
+                                                      directions, 
+                                                      obs_categories, 
+                                                      sigma, 
+                                                      v_matrix, 
+                                                      K, 
+                                                      num_categories, 
+                                                      K, 
+                                                      3000, 
+                                                      10000, 
+                                                      key,
+                                                      )
+                                                      
+
+print("ground truth\n", gt_object_locations, "\n", gt_object_categories)
+print("inferred\n", object_locations, "\n", object_categories)
+print(resps, nll)
+
+
+
+
+

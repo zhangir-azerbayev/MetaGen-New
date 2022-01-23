@@ -5,6 +5,7 @@ import math
 from functools import partial
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import jax.random as jrandom
 
 eps = 1e-10
 def heaviside(x): 
@@ -152,10 +153,37 @@ def compute_component_nll(resps, camera_locations,
                                                 object_location, 
                                                 object_category).flatten()
 
+    return np.where(normalizer!=0, 1/normalizer * np.sum(resps * nll_vec), 0)
+
+def compute_model_nll(resps, 
+                         camera_locations, 
+                         directions, 
+                         obs_categories, 
+                         sigma, 
+                         v_matrix, 
+                         object_locations, 
+                         object_categories, 
+                         ): 
+    in_axes = (1, None, None, None, None, None, 0, 0)
+
+    per_component_nll = vmap(compute_component_nll, in_axes=in_axes)(resps, 
+                                                      camera_locations, 
+                                                      directions, 
+                                                      obs_categories, 
+                                                      sigma, 
+                                                      v_matrix, 
+                                                      object_locations, 
+                                                      object_categories,
+                                                      )
+
+    return np.sum(per_component_nll)
+
+                                        
 
 
-    return 1/normalizer * np.sum(resps * nll_vec)
-
+"""
+if print_losses=True, all upstream vmaps must be disabled
+"""
 def optimize_location(resps, 
                       camera_locations, 
                       directions, 
@@ -166,7 +194,8 @@ def optimize_location(resps,
                       object_category,
                       num_steps,
                       lr, 
-                      print_losses = False, 
+                      clip_threshold=1,
+                      print_losses = False
                       ):
     loss_fn = lambda loc: compute_component_nll(resps, 
                                                 camera_locations, 
@@ -190,6 +219,11 @@ def optimize_location(resps,
             losses.append(loss)
 
         location_grad = grad_loss(object_location)
+
+        size = np.linalg.norm(location_grad)
+        need_clipping = size > clip_threshold
+        clip_factor = np.where(need_clipping, clip_threshold/size, 1)
+        location_grad = clip_factor * location_grad
         
         
         object_location = object_location - lr * location_grad
@@ -213,39 +247,42 @@ def optimize_location_and_category(resps,
                       num_steps,
                       lr=1e-3, 
                       clip_threshold=1,
+                      parallel=True
                       ):
-    """
-    locations = [None for _ in range(num_categories)]
-    nlls = [None for _ in range(num_categories)]
-    
-    for c in range(1, num_categories+1): 
-        locations[c-1], nlls[c-1] = optimize_location(resps, 
-                                                      camera_locations, 
-                                                      directions, 
-                                                      obs_categories, 
-                                                      sigma, 
-                                                      v_matrix, 
-                                                      init_location, 
-                                                      c, 
-                                                      num_steps, 
-                                                      lr=lr, 
-                                                      clip_threshold=clip_threshold)
-    
-    nlls = np.array(nlls)
-    """
-    print("doing component with all categories")
-    categories = np.arange(1, num_categories+1)
-    in_axes = (None, None, None, None, None, None, None, 0, None, None)
-    locations, nlls = vmap(optimize_location, in_axes=in_axes)(resps, 
-                                                               camera_locations, 
-                                                               directions, 
-                                                               obs_categories, 
-                                                               sigma, 
-                                                               v_matrix, 
-                                                               init_location, 
-                                                               categories, 
-                                                               num_steps, 
-                                                               lr)
+
+    if not parallel: 
+        locations = [None for _ in range(num_categories)]
+        nlls = [None for _ in range(num_categories)]
+        
+        for c in range(1, num_categories+1): 
+            locations[c-1], nlls[c-1] = optimize_location(resps, 
+                                                          camera_locations, 
+                                                          directions, 
+                                                          obs_categories, 
+                                                          sigma, 
+                                                          v_matrix, 
+                                                          init_location, 
+                                                          c, 
+                                                          num_steps, 
+                                                          lr=lr
+                                                          )
+
+        locations = np.stack(locations)
+        nlls = np.array(nlls)
+    else: 
+        print("doing component with all categories")
+        categories = np.arange(1, num_categories+1)
+        in_axes = (None, None, None, None, None, None, None, 0, None, None)
+        locations, nlls = vmap(optimize_location, in_axes=in_axes)(resps, 
+                                                                   camera_locations, 
+                                                                   directions, 
+                                                                   obs_categories, 
+                                                                   sigma, 
+                                                                   v_matrix, 
+                                                                   init_location, 
+                                                                   categories, 
+                                                                   num_steps, 
+                                                                   lr)
 
     print("nlls: ", nlls)
     best_cat = np.argmin(nlls) + 1
@@ -263,7 +300,8 @@ def em_step(camera_locations,
             object_categories, 
             num_categories, 
             num_gd_steps=100, 
-            lr=1e-3):
+            lr=1e-3, 
+            parallel=True):
 
     K = np.shape(object_locations)[0]-1
     print("K: ", K)
@@ -279,47 +317,168 @@ def em_step(camera_locations,
                           )
 
     print(resps)
-
-    """ 
-    # M-step locations 
-    new_locations = [np.array([0.0, 0, 0])] + [None for _ in range(1,K+1)]
-    new_categories = [0] + [None for _ in range(1, K+1)]
     
-    for k in range(1, K+1): 
-        #M-step locations
-        print("running m step")
-        new_locations[k], new_categories[k]= optimize_location_and_category(resps[:, k], 
-                                                 camera_locations, 
-                                                 directions, 
-                                                 obs_categories, 
-                                                 sigma,
-                                                 v_matrix,
-                                                 object_locations[k], 
-                                                 num_categories, 
-                                                 num_gd_steps, 
-                                                 lr
-                                                 )  
+    if not parallel: 
+        # M-step locations 
+        new_locations = [np.array([0.0, 0, 0])] + [None for _ in range(1,K+1)]
+        new_categories = [0] + [None for _ in range(1, K+1)]
+        
+        for k in range(1, K+1): 
+            #M-step locations
+            print("running m step")
+            new_locations[k], new_categories[k]= optimize_location_and_category(resps[:, k], 
+                                                     camera_locations, 
+                                                     directions, 
+                                                     obs_categories, 
+                                                     sigma,
+                                                     v_matrix,
+                                                     object_locations[k], 
+                                                     num_categories, 
+                                                     num_gd_steps, 
+                                                     lr
+                                                     )  
 
-    
-    new_locations = np.stack(new_locations)
-    new_categories = np.stack(new_categories)
-    """
-    in_axes = (1, None, None, None, None, None, 0, None, None, None)
-    inferred_locations, inferred_categories = vmap(optimize_location_and_category, 
-            in_axes=in_axes)(resps[:, 1:], 
-                             camera_locations, 
-                             directions, 
-                             obs_categories, 
-                             sigma,
-                             v_matrix,
-                             object_locations[1:], 
-                             num_categories, 
-                             num_gd_steps, 
-                             lr
-                            )
-    new_locations = np.concatenate((np.array([[0.0, 0, 0]]), inferred_locations), 
-            axis=0)
-    new_categories = np.concatenate((np.array([0]), inferred_categories))
+        
+        new_locations = np.stack(new_locations)
+        new_categories = np.stack(new_categories)
+    else: 
+        in_axes = (1, None, None, None, None, None, 0, None, None, None)
+        inferred_locations, inferred_categories = vmap(optimize_location_and_category, 
+                in_axes=in_axes)(resps[:, 1:], 
+                                 camera_locations, 
+                                 directions, 
+                                 obs_categories, 
+                                 sigma,
+                                 v_matrix,
+                                 object_locations[1:], 
+                                 num_categories, 
+                                 num_gd_steps, 
+                                 lr
+                                )
+        new_locations = np.concatenate((np.array([[0.0, 0, 0]]), inferred_locations), 
+                axis=0)
+        new_categories = np.concatenate((np.array([0]), inferred_categories))
     print("new locations:\n", new_locations) 
     print("new categories:\n", new_categories)
     return new_locations, new_categories 
+
+def init_random_search(camera_locations, 
+                                  directions, 
+                                  obs_categories, 
+                                  sigma, 
+                                  v_matrix, 
+                                  num_objects, 
+                                  num_categories, 
+                                  num_inits, 
+                                  key,
+                                  ):
+    key, subkey = jrandom.split(key)
+    unscaled_candidate_object_locations = jrandom.uniform(subkey, (num_inits,
+        num_objects, 3), minval=-1, maxval=1)
+
+    scale = np.array([[[5, 3, 5]]])
+    candidate_object_locations = unscaled_candidate_object_locations * scale
+
+    zero_locations = np.zeros((num_inits, 1, 3))
+
+    all_candidate_object_locations = np.concatenate((zero_locations, 
+        candidate_object_locations), axis=1)
+    
+    subkey, subsubkey = jrandom.split(subkey)
+    candidate_object_categories = jrandom.randint(subsubkey, 
+            (num_inits, num_objects), 1, num_categories+1)
+    
+    print("dtype: ", np.dtype(candidate_object_categories))
+    zero_categories = np.zeros((num_inits, 1), dtype=np.int64)
+
+    all_candidate_object_categories = np.concatenate((zero_categories, 
+        candidate_object_categories), axis=1)
+    
+    in_axes = (None, None, None, None, None, 0, 0)
+    candidate_resps = vmap(compute_resps, in_axes=in_axes)(camera_locations, 
+                          directions, 
+                          obs_categories, 
+                          sigma, 
+                          v_matrix, 
+                          all_candidate_object_locations, 
+                          all_candidate_object_categories,
+                          )
+
+
+    in_axes = (0, None, None, None, None, None, 0, 0)
+    candidate_nlls = vmap(compute_model_nll, 
+            in_axes=in_axes)(candidate_resps, 
+                             camera_locations, 
+                             directions, 
+                             obs_categories, 
+                             sigma, 
+                             v_matrix, 
+                             all_candidate_object_locations, 
+                             all_candidate_object_categories, 
+                             )
+    
+    best_index = np.argmin(candidate_nlls)
+
+    best_locations = all_candidate_object_locations[best_index]
+    best_categories = all_candidate_object_categories[best_index]
+
+    return best_locations, best_categories
+
+def do_em_inference(camera_locations, 
+                    directions, 
+                    obs_categories, 
+                    sigma, 
+                    v_matrix, 
+                    num_objects,
+                    num_categories,
+                    num_em_steps,
+                    num_gd_steps,
+                    num_inits,
+                    key,
+                    ): 
+    
+    object_locations, object_categories = init_random_search(camera_locations, 
+                                                             directions, 
+                                                             obs_categories, 
+                                                             sigma, 
+                                                             v_matrix, 
+                                                             num_objects, 
+                                                             num_categories, 
+                                                             num_inits, 
+                                                             key,
+                                                             )
+    print("initialization: ", object_locations, object_categories)
+    for _ in range(num_em_steps): 
+        object_locations, object_categories = em_step(camera_locations, 
+                                                      directions, 
+                                                      obs_categories, 
+                                                      sigma, 
+                                                      v_matrix, 
+                                                      object_locations, 
+                                                      object_categories, 
+                                                      num_categories, 
+                                                      num_gd_steps=num_gd_steps
+                                                      )
+    # computes final likelihood 
+    resps_final = compute_resps(camera_locations, 
+                                directions, 
+                                obs_categories, 
+                                sigma, 
+                                v_matrix, 
+                                object_locations, 
+                                object_categories, 
+                                )
+
+    nll_final = compute_model_nll(resps_final, 
+                                  directions, 
+                                  obs_categories, 
+                                  sigma, 
+                                  v_matrix, 
+                                  object_locations, 
+                                  object_categories, 
+                                  )
+
+
+    return object_locations, object_categories, resps_final, nll_final
+
+
