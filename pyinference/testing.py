@@ -210,7 +210,7 @@ nlls = [None]
 start = time.time()
 
 
-for k in range(3, 4): 
+for k in range(1, 5+1): 
     print(f"################### K = {k}")
     object_locations, object_categories, resps, nll = do_em_inference(camera_locations, 
                                                           directions, 
@@ -219,7 +219,7 @@ for k in range(3, 4):
                                                           v_matrix, 
                                                           k, 
                                                           num_categories, 
-                                                          5, 
+                                                          10, 
                                                           3000, 
                                                           10000, 
                                                           key,
@@ -235,6 +235,3 @@ print(nlls)
 
 print("time: ", end-start)
 
-print("resps: ")
-for row in resps: 
-    print(row)

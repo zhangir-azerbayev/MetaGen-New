@@ -7,6 +7,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import jax.random as jrandom
 
+eps=1e-10
 
 """Correct up to a multiplicative constant"""
 def likelihood(camera_location, 
@@ -47,9 +48,11 @@ def compute_row_responsibilities(camera_location,
                                   object_locations, 
                                   object_categories
                                   )
-    #note you may have broken baseline model
-    likelihood_vec = (likelihood_vec.flatten() + eps)
-    resps = likelihood_vec/np.sum(likelihood_vec)
+
+    likelihood_vec = likelihood_vec.flatten() 
+    safe_likelihood_vec = np.where(np.sum(likelihood_vec)!=0, 
+            likelihood_vec, (likelihood_vec+eps).at[0].set(0))
+    resps = safe_likelihood_vec/np.sum(safe_likelihood_vec)
 
     return resps
 
@@ -152,8 +155,8 @@ def compute_component_q(resps, camera_locations,
     return np.where(normalizer!=0, np.sum(resps * nll_vec)/normalizer, 0)
 
 def compute_example_ll(camera_location, 
-                       directions, 
-                       obs_categories, 
+                       direction, 
+                       obs_category, 
                        sigma, 
                        v_matrix,
                        object_locations, 
@@ -182,7 +185,7 @@ def compute_model_nll(camera_locations,
                          ): 
     in_axes = (0, 0, 0, None, None, None, None)
 
-    per_example_ll = vmap(compute_component_nll, in_axes=in_axes)(camera_locations, 
+    per_example_ll = vmap(compute_example_ll, in_axes=in_axes)(camera_locations, 
                                                       directions, 
                                                       obs_categories, 
                                                       sigma, 
@@ -191,7 +194,7 @@ def compute_model_nll(camera_locations,
                                                       object_categories,
                                                       )
 
-    nll = -np.sum(np.log(per_example_ll))
+    nll = -np.mean(np.log(per_example_ll+eps))
 
     return nll
 
@@ -423,10 +426,9 @@ def init_random_search(camera_locations,
                           )
 
 
-    in_axes = (0, None, None, None, None, None, 0, 0)
+    in_axes = (None, None, None, None, None, 0, 0)
     candidate_nlls = vmap(compute_model_nll, 
-            in_axes=in_axes)(candidate_resps, 
-                             camera_locations, 
+            in_axes=in_axes)(camera_locations, 
                              directions, 
                              obs_categories, 
                              sigma, 
