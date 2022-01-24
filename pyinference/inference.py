@@ -448,8 +448,9 @@ def do_em_inference(camera_locations,
                                                              key,
                                                              )
     print("initialization: ", object_locations, object_categories)
+    compiled_em_step = jit(em_step)
     for _ in range(num_em_steps): 
-        object_locations, object_categories = em_step(camera_locations, 
+        object_locations, object_categories = compiled_em_step(camera_locations, 
                                                       directions, 
                                                       obs_categories, 
                                                       sigma, 

@@ -118,7 +118,7 @@ def test_baseline():
 K = 3
 sigma = 0.1
 num_categories = 5
-gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, num_categories, 20, sigma)
+gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, num_categories, 500, sigma)
 
 v_matrix = np.array([[0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0], 
         [0, 0, 1, 0, 0, 0], [0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 1, 0], 
@@ -126,7 +126,7 @@ v_matrix = np.array([[0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0],
 
 
 
-
+"""
 with mp.Pool(processes=4) as pool: 
     everything = pool.starmap(do_em_inference, zip(repeat(camera_locations), 
                                                    repeat(directions), 
@@ -142,11 +142,12 @@ with mp.Pool(processes=4) as pool:
                                                    ))
 
 print(everything)
-
 """
 nlls = [None]
 start = time.time()
-for k in range(1, 6): 
+
+
+for k in range(3, 4): 
     print(f"################### K = {k}")
     object_locations, object_categories, resps, nll = do_em_inference(camera_locations, 
                                                           directions, 
@@ -170,6 +171,5 @@ end = time.time()
 print(nlls)
 
 print("time: ", end-start)
-"""
 
 
