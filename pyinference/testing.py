@@ -69,6 +69,78 @@ def sample_baseline(num_objects,
     return object_locations, object_categories, camera_locations, directions, obs_categories, obs_objects
 
 
+def sample_metagen(num_objects, 
+                    num_categories, 
+                    num_observations, 
+                    sigma, 
+                    v_matrix,
+                    key,
+                    ): 
+    p_hallucination = np.sum(v_matrix[0, :])
+    dist_hallucinations = v_matrix[0, :]/p_hallucination
+    cov = sigma * np.identity(3)
+    
+    # object locations
+    unscaled_locations = jrandom.uniform(key, (num_objects, 3), 
+            minval=0, maxval=1)
+    scale = np.array([[10, 3, 10]])
+    shift = np.array([[-5, 0, -5]])
+    scaled_locations = unscaled_locations*scale+shift
+    object_locations = np.concatenate((np.array([[0.0, 0, 0]]), 
+        scaled_locations), axis=0)
+
+    # categories 
+    generated_categories = jrandom.randint(key, (num_objects,), 
+            minval=1, maxval=num_categories+1)
+    object_categories = np.concatenate((np.array([0]), generated_categories), 
+            axis=0)
+
+    
+    camera_locations = []
+    directions = []
+    obs_categories = []
+    obs_objects = []
+    for _ in range(num_observations): 
+        _, key = jrandom.split(key)
+        x = float(random.uniform(-5, 5))
+        y = random.uniform(0, 3)
+        z = random.uniform(-5, 5)
+        camera_location = np.array([x, y, z])
+
+        choice = random.random()
+
+        if choice < p_hallucination: 
+            _, key = jrandom.split(key)
+            obs_obj=0
+            x = float(random.uniform(-5, 5))
+            y = random.uniform(0, 3)
+            z = random.uniform(-5, 5)
+            detection_location = np.array([x, y, z])
+            obs_category = jrandom.categorical(key, np.log(dist_hallucinations))
+        else: 
+            _, key = jrandom.split(key)
+            obs_obj = random.randrange(1, num_objects+1)
+            obj_location = object_locations[obs_obj]
+            obs_category = jrandom.categorical(key, np.log(v_matrix[object_categories[obs_obj], :]))
+
+            detection_location = np.array(multivariate_normal.rvs(obj_location, cov))
+
+        long_direction = detection_location-camera_location
+        direction = long_direction/np.linalg.norm(long_direction)
+
+
+        camera_locations.append(camera_location)
+        directions.append(direction)
+        obs_categories.append(obs_category)
+        obs_objects.append(obs_obj)
+
+
+    camera_locations = np.stack(camera_locations)
+    directions = np.stack(directions)
+    obs_categories = np.array(obs_categories)
+
+    return object_locations, object_categories, camera_locations, directions, obs_categories, obs_objects
+
 def test_baseline(): 
     K = 2
     sigma = 0.1
@@ -118,31 +190,22 @@ def test_baseline():
 K = 3
 sigma = 0.1
 num_categories = 5
-gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, num_categories, 500, sigma)
 
-v_matrix = np.array([[0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0], 
-        [0, 0, 1, 0, 0, 0], [0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 1, 0], 
-        [0, 0, 0, 0, 0, 1]])
+v_matrix = np.array([[0, .01, .01, .01, .01, .01], 
+        [0, .96, .01, .01, .01, .01], 
+        [0, .01, .96, .01, .01, .01], 
+        [0, .01, .01, .96, .01, .01], 
+        [0, .01, .01, .01, .96, .01], 
+        [0, .01, .01, .01, .01, .96]])
+
+
+gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_metagen(K,
+        num_categories, 500, sigma, v_matrix, key)
 
 
 
-"""
-with mp.Pool(processes=4) as pool: 
-    everything = pool.starmap(do_em_inference, zip(repeat(camera_locations), 
-                                                   repeat(directions), 
-                                                   repeat(obs_categories), 
-                                                   repeat(sigma),
-                                                   repeat(v_matrix), 
-                                                   range(1, 5+1), 
-                                                   repeat(num_categories), 
-                                                   repeat(5), 
-                                                   repeat(3000), 
-                                                   repeat(10000), 
-                                                   repeat(key),
-                                                   ))
+print(gt_object_categories)
 
-print(everything)
-"""
 nlls = [None]
 start = time.time()
 
@@ -172,4 +235,6 @@ print(nlls)
 
 print("time: ", end-start)
 
-
+print("resps: ")
+for row in resps: 
+    print(row)
