@@ -7,13 +7,16 @@ import numpy
 import matplotlib.pyplot as plt
 import os 
 import jax.random as jrandom
+import multiprocessing as mp 
+from itertools import repeat
+import time
 
 
 os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 
-random.seed(13)
-numpy.random.seed(13)
-key = jrandom.PRNGKey(13)
+random.seed(12)
+numpy.random.seed(12)
+key = jrandom.PRNGKey(12)
 
 def sample_baseline(num_objects, 
                     num_categories, 
@@ -115,32 +118,58 @@ def test_baseline():
 K = 3
 sigma = 0.1
 num_categories = 5
-gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, num_categories, 500, sigma)
+gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_baseline(K, num_categories, 20, sigma)
 
 v_matrix = np.array([[0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0], 
         [0, 0, 1, 0, 0, 0], [0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 1, 0], 
         [0, 0, 0, 0, 0, 1]])
 
 
-object_locations, object_categories, resps, nll = do_em_inference(camera_locations, 
-                                                      directions, 
-                                                      obs_categories, 
-                                                      sigma, 
-                                                      v_matrix, 
-                                                      K, 
-                                                      num_categories, 
-                                                      K, 
-                                                      3000, 
-                                                      10000, 
-                                                      key,
-                                                      )
+
+
+with mp.Pool(processes=4) as pool: 
+    everything = pool.starmap(do_em_inference, zip(repeat(camera_locations), 
+                                                   repeat(directions), 
+                                                   repeat(obs_categories), 
+                                                   repeat(sigma),
+                                                   repeat(v_matrix), 
+                                                   range(1, 5+1), 
+                                                   repeat(num_categories), 
+                                                   repeat(5), 
+                                                   repeat(3000), 
+                                                   repeat(10000), 
+                                                   repeat(key),
+                                                   ))
+
+print(everything)
+
+"""
+nlls = [None]
+start = time.time()
+for k in range(1, 6): 
+    print(f"################### K = {k}")
+    object_locations, object_categories, resps, nll = do_em_inference(camera_locations, 
+                                                          directions, 
+                                                          obs_categories, 
+                                                          sigma, 
+                                                          v_matrix, 
+                                                          k, 
+                                                          num_categories, 
+                                                          5, 
+                                                          3000, 
+                                                          10000, 
+                                                          key,
+                                                          )
                                                       
 
-print("ground truth\n", gt_object_locations, "\n", gt_object_categories)
-print("inferred\n", object_locations, "\n", object_categories)
-print(resps, nll)
+    print("ground truth\n", gt_object_locations, "\n", gt_object_categories)
+    print("inferred\n", object_locations, "\n", object_categories)
+    print(resps, nll)
+    nlls.append(nll)
+end = time.time()
+print(nlls)
 
-
-
+print("time: ", end-start)
+"""
 
 

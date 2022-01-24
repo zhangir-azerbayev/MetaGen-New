@@ -470,6 +470,7 @@ def do_em_inference(camera_locations,
                                 )
 
     nll_final = compute_model_nll(resps_final, 
+                                  camera_locations,
                                   directions, 
                                   obs_categories, 
                                   sigma, 
