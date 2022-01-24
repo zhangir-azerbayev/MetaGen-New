@@ -7,12 +7,6 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import jax.random as jrandom
 
-eps = 1e-10
-def heaviside(x): 
-    return np.heaviside(x, 0)
-
-def alt_heaviside(x): 
-    return 1-np.heaviside(x, 0)
 
 """Correct up to a multiplicative constant"""
 def likelihood(camera_location, 
@@ -137,7 +131,8 @@ def nll(camera_location,
     cat_nonzero_nll = -np.log(v_matrix_weight+eps) + location_only
     return np.where(object_category!=0, cat_nonzero_nll, cat_zero_nll)
 
-def compute_component_nll_for_grad(resps, camera_locations, 
+
+def compute_component_q(resps, camera_locations, 
                                     directions, 
                                     obs_categories, 
                                     sigma, 
@@ -154,29 +149,30 @@ def compute_component_nll_for_grad(resps, camera_locations,
                                                 object_location, 
                                                 object_category).flatten()
     # what happens if we delete the normalizer? 
-    return np.where(normalizer!=0, 1/normalizer * np.sum(resps * nll_vec), 0)
+    return np.where(normalizer!=0, np.sum(resps * nll_vec)/normalizer, 0)
 
-def compute_component_q(resps, camera_locations, 
-                                    directions, 
-                                    obs_categories, 
-                                    sigma, 
-                                    v_matrix, 
-                                    object_location, 
-                                    object_category): 
-    in_axes = (0, 0, 0, None, None, None, None)
-    nll_vec = vmap(nll, in_axes=in_axes)(camera_locations, 
-                                                directions, 
-                                                obs_categories, 
-                                                sigma, 
-                                                v_matrix, 
-                                                object_location, 
-                                                object_category).flatten()
-    # what happens if we delete the normalizer? 
-    return np.sum(resps * nll_vec)
+def compute_example_ll(camera_location, 
+                       directions, 
+                       obs_categories, 
+                       sigma, 
+                       v_matrix,
+                       object_locations, 
+                       object_categories, 
+                       ): 
+    in_axes = (None, None, None, None, None, 0, 0)
+    sum_component_l = np.sum(vmap(likelihood, in_axes=in_axes)(camera_location, 
+                                                        direction,
+                                                        obs_category, 
+                                                        sigma, 
+                                                        v_matrix, 
+                                                        object_locations, 
+                                                        object_categories,
+                                                        ))
+
+    return sum_component_l
 
 
-def compute_model_q(resps, 
-                         camera_locations, 
+def compute_model_nll(camera_locations, 
                          directions, 
                          obs_categories, 
                          sigma, 
@@ -184,10 +180,9 @@ def compute_model_q(resps,
                          object_locations, 
                          object_categories, 
                          ): 
-    in_axes = (1, None, None, None, None, None, 0, 0)
+    in_axes = (0, 0, 0, None, None, None, None)
 
-    per_component_nll = vmap(compute_component_nll, in_axes=in_axes)(resps, 
-                                                      camera_locations, 
+    per_example_ll = vmap(compute_component_nll, in_axes=in_axes)(camera_locations, 
                                                       directions, 
                                                       obs_categories, 
                                                       sigma, 
@@ -196,7 +191,9 @@ def compute_model_q(resps,
                                                       object_categories,
                                                       )
 
-    return np.sum(per_component_nll)
+    nll = -np.sum(np.log(per_example_ll))
+
+    return nll
 
                                         
 
@@ -217,7 +214,7 @@ def optimize_location(resps,
                       clip_threshold=1,
                       print_losses = False,
                       ):
-    loss_fn = lambda loc: compute_component_nll_for_grad(resps, 
+    loss_fn = lambda loc: compute_component_q(resps, 
                                                 camera_locations, 
                                                 directions, 
                                                 obs_categories, 
@@ -492,8 +489,7 @@ def do_em_inference(camera_locations,
                                 )
     
     # implement nll
-    nll_final = compute_model_nll(resps_final, 
-                                  camera_locations,
+    nll_final = compute_model_nll(camera_locations,
                                   directions, 
                                   obs_categories, 
                                   sigma, 
