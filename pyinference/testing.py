@@ -4,7 +4,6 @@ import random
 from scipy.stats import multivariate_normal
 from pyinference.inference import *
 import numpy 
-import matplotlib.pyplot as plt
 import os 
 import jax.random as jrandom
 import multiprocessing as mp 
@@ -210,7 +209,7 @@ nlls = [None]
 start = time.time()
 
 
-for k in range(1, 5+1): 
+for k in range(3,4): 
     print(f"################### K = {k}")
     object_locations, object_categories, resps, nll = do_em_inference(camera_locations, 
                                                           directions, 
