@@ -2,11 +2,13 @@ import sys
 import json
 import jax.numpy as np
 import jax.random as jrandom
+import jax 
 from tqdm import tqdm
 from pyinference.inference import do_em_inference
 import os 
 
 
+jax.config.update('jax_platform_name', 'cpu')
 
 def get_scene(x): 
     fle_num = 1 + (x//50)
@@ -60,18 +62,27 @@ idx = int(os.environ['SLURM_ARRAY_TASK_ID'])
 
 camera_locations, directions, obs_categories, gt_object_locations, gt_object_categories = get_array_data(idx)
 
-v_matrix = np.array([[.0, 0, 0, 0, 0, 0], 
-                      [0, 1, 0, 0, 0, 0], 
-                      [0, 0, 1, 0, 0, 0], 
-                      [0, 0, 0, 1, 0, 0], 
-                      [0, 0, 0, 0, 1, 0], 
-                      [0, 0, 0, 0, 0, 1],
+v_matrix = np.array([[.0, .09, .0, .03, .01, 0], 
+                      [0, .97, .02, 0, .01, 0], 
+                      [0, .04, .92, 0, .02, .02], 
+                      [0, .52, .03, .4, .05, 0], 
+                      [0, .06, 0, .01, .92, 0], 
+                      [0, .13, .01, 0, .03, .83],
                       ])
+"""
+v_matrix = np.array([[.0, 0, 0, 0, 0, 0], 
+                     [0, 1, 0, 0, 0, 0], 
+                     [0, 0, 1, 0, 0, 0], 
+                     [0, 0, 0, 1, 0, 0], 
+                     [0, 0, 0, 0, 1, 0], 
+                     [0, 0, 0, 0, 0, 1], 
+                     ])
+"""
 
-sigma=.2
+sigma=1
 key = jrandom.PRNGKey(idx)
 
-for k in range(1, 6): 
+for k in range(4, 5): 
     object_locations, object_categories, resps, nll = do_em_inference(camera_locations, 
             directions, 
             obs_categories, 
@@ -79,13 +90,13 @@ for k in range(1, 6):
             v_matrix, 
             k, 
             5, 
-            10, 
-            3000, 
+            12, 
+            4000, 
             10000, 
             key, 
             )
 
-    np.savez(f"results/baseline_retinanet/sigma{sigma}_scene{idx}_objects{k}", 
+    np.savez(f"results/gtv_retinanet/sigma{sigma}_scene{idx}_objects{k}", 
              object_locations=object_locations, 
              object_categories=object_categories, 
              resps=resps, 

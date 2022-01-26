@@ -410,7 +410,7 @@ def init_random_search(camera_locations,
             (num_inits, num_objects), 1, num_categories+1)
     
     print("dtype: ", np.dtype(candidate_object_categories))
-    zero_categories = np.zeros((num_inits, 1), dtype=np.int64)
+    zero_categories = np.zeros((num_inits, 1), dtype=np.int32)
 
     all_candidate_object_categories = np.concatenate((zero_categories, 
         candidate_object_categories), axis=1)
