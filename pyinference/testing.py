@@ -201,7 +201,7 @@ v_matrix = np.array([[0, .01, .01, .01, .01, .01],
 gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_metagen(K,
         num_categories, 500, sigma, v_matrix, key)
 
-
+obs_mask = np.concatenate((np.ones(300), np.zeros(200)))
 
 print(gt_object_categories)
 
@@ -214,11 +214,12 @@ for k in range(3,4):
     object_locations, object_categories, resps, nll = do_em_inference(camera_locations, 
                                                           directions, 
                                                           obs_categories, 
+                                                          obs_mask, 
                                                           sigma, 
                                                           v_matrix, 
                                                           k, 
                                                           num_categories, 
-                                                          10, 
+                                                          3, 
                                                           3000, 
                                                           10000, 
                                                           key,
