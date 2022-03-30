@@ -199,9 +199,9 @@ v_matrix = np.array([[0, .01, .01, .01, .01, .01],
 
 
 gt_object_locations, gt_object_categories, camera_locations, directions, obs_categories, obs_objects = sample_metagen(K,
-        num_categories, 500, sigma, v_matrix, key)
+        num_categories, 700, sigma, v_matrix, key)
 
-obs_mask = np.concatenate((np.ones(300), np.zeros(200)))
+obs_mask = np.concatenate((np.ones(500), np.zeros(200)))
 
 print(gt_object_categories)
 
